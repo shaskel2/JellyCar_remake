@@ -16,7 +16,7 @@ No installation or server required — just open the file:
 
 ````bash
 # Clone the repo
-git clone https://github.com/your-username/your-repo-name.git
+git clone https://github.com/shaskel2/JellyCar_remake.git
 
 # Open the game — that's it!
 open index.html
