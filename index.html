@@ -1,0 +1,2227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>JellyCar // Neon Drive</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body {
+    width: 100%; height: 100%; overflow: hidden;
+    background: #0a0014;
+    font-family: "Courier New", monospace;
+    color: #fff;
+    user-select: none;
+  }
+  canvas#game { position: absolute; top: 0; left: 0; display: block; }
+
+  /* ---------- LOADING SCREEN ---------- */
+  #loader {
+    position: fixed; inset: 0; z-index: 100;
+    background: radial-gradient(ellipse at center bottom, #3a005c 0%, #1a0033 40%, #05000c 100%);
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    transition: opacity 0.7s ease;
+    overflow: hidden;
+  }
+  #loader.hidden { opacity: 0; pointer-events: none; }
+
+  /* faux-3D scrolling grid floor */
+  .grid-floor {
+    position: absolute; left: 50%; bottom: 0;
+    width: 200%; height: 60%;
+    transform: translateX(-50%) perspective(400px) rotateX(60deg);
+    transform-origin: center top;
+    background-image:
+      linear-gradient(rgba(255, 42, 138, 0.55) 2px, transparent 2px),
+      linear-gradient(90deg, rgba(0, 240, 255, 0.55) 2px, transparent 2px);
+    background-size: 60px 60px;
+    animation: gridScroll 1.2s linear infinite;
+    box-shadow: inset 0 60px 120px rgba(10, 0, 20, 0.9);
+    pointer-events: none;
+  }
+  @keyframes gridScroll {
+    from { background-position: 0 0; }
+    to   { background-position: 0 60px; }
+  }
+
+  .sun {
+    position: absolute; top: 32%; left: 50%;
+    width: 280px; height: 280px;
+    transform: translate(-50%, -50%);
+    border-radius: 50%;
+    background: radial-gradient(circle at 50% 35%, #ffd1e8 0%, #ff6ec4 30%, #ff2a8a 60%, transparent 75%);
+    filter: blur(2px);
+    pointer-events: none;
+  }
+  .sun::after {
+    content: ""; position: absolute; inset: 0; border-radius: 50%;
+    background: repeating-linear-gradient(
+      to bottom, transparent 0 22px, rgba(10,0,20,0.6) 22px 28px
+    );
+    mask: linear-gradient(to bottom, transparent 50%, #000 100%);
+    -webkit-mask: linear-gradient(to bottom, transparent 50%, #000 100%);
+  }
+
+  .stage {
+    position: relative; z-index: 2;
+    display: flex; flex-direction: column; align-items: center;
+  }
+  .title {
+    font-size: clamp(2.5em, 7vw, 5em);
+    font-weight: 900;
+    letter-spacing: 0.18em;
+    background: linear-gradient(180deg, #fff 0%, #ff6ec4 45%, #ff2a8a 70%, #6a00ff 100%);
+    -webkit-background-clip: text; background-clip: text;
+    -webkit-text-fill-color: transparent;
+    filter: drop-shadow(0 0 18px rgba(255, 42, 138, 0.85));
+    margin-bottom: 0.05em;
+  }
+  .subtitle {
+    color: #00f0ff; letter-spacing: 0.5em;
+    font-size: 0.9em; margin-bottom: 1.6em;
+    text-shadow: 0 0 12px #00f0ff, 0 0 4px #00f0ff;
+  }
+
+  /* the bouncing jelly mascot */
+  .jelly-stage { height: 130px; display: flex; align-items: flex-end; margin-bottom: 1.8em; }
+  .jelly {
+    width: 92px; height: 92px;
+    background: radial-gradient(circle at 35% 30%, #ffd1e8 0%, #ff6ec4 35%, #ff2a8a 75%);
+    border-radius: 30%;
+    box-shadow:
+      0 0 30px #ff2a8a,
+      inset 0 -14px 24px rgba(80, 0, 40, 0.5),
+      inset 6px 6px 18px rgba(255, 255, 255, 0.35);
+    animation: squish 1.1s cubic-bezier(.5,.05,.5,.95) infinite;
+    transform-origin: 50% 100%;
+  }
+  @keyframes squish {
+    0%   { transform: translateY(-90px) scale(1, 1)       rotate(-3deg); border-radius: 30%; }
+    35%  { transform: translateY(0)     scale(1.35, 0.55)  rotate(0deg);  border-radius: 50% 50% 35% 35%; }
+    55%  { transform: translateY(-20px) scale(0.85, 1.18)  rotate(2deg);  border-radius: 35% 35% 50% 50%; }
+    80%  { transform: translateY(-70px) scale(1.05, 0.95)  rotate(-2deg); border-radius: 32%; }
+    100% { transform: translateY(-90px) scale(1, 1)       rotate(-3deg); border-radius: 30%; }
+  }
+  .shadow {
+    position: absolute; bottom: 0; left: 50%;
+    width: 90px; height: 14px;
+    transform: translateX(-50%);
+    background: radial-gradient(ellipse at center, rgba(255,42,138,0.7), transparent 70%);
+    filter: blur(4px);
+    animation: shadowPulse 1.1s cubic-bezier(.5,.05,.5,.95) infinite;
+  }
+  @keyframes shadowPulse {
+    0%, 100% { transform: translateX(-50%) scale(0.7);  opacity: 0.5; }
+    35%      { transform: translateX(-50%) scale(1.4);  opacity: 1;   }
+    80%      { transform: translateX(-50%) scale(0.8);  opacity: 0.6; }
+  }
+
+  .progress-wrap {
+    width: min(360px, 80vw); height: 22px;
+    border: 2px solid #00f0ff; border-radius: 12px;
+    box-shadow: 0 0 18px rgba(0, 240, 255, 0.7), inset 0 0 12px rgba(0, 240, 255, 0.18);
+    overflow: hidden; position: relative;
+    background: rgba(0, 20, 40, 0.5);
+  }
+  .progress {
+    height: 100%; width: 0%;
+    background: linear-gradient(90deg, #00f0ff 0%, #ff6ec4 50%, #ff2a8a 100%);
+    box-shadow: 0 0 20px #ff2a8a;
+    transition: width 0.18s linear;
+  }
+  .progress::after {
+    content: ""; position: absolute; inset: 0;
+    background: repeating-linear-gradient(
+      45deg, rgba(255,255,255,0.18) 0 8px, transparent 8px 16px);
+    animation: stripeMove 0.6s linear infinite;
+  }
+  @keyframes stripeMove { to { background-position: 32px 0; } }
+
+  .status {
+    margin-top: 0.9em; color: #ff6ec4;
+    letter-spacing: 0.2em; font-size: 0.85em;
+    text-shadow: 0 0 10px #ff2a8a;
+    min-height: 1.2em;
+  }
+
+  /* ---------- HUD ---------- */
+  #hud {
+    position: fixed; top: 18px; left: 18px; z-index: 10;
+    color: #00f0ff; font-size: 13px; letter-spacing: 0.08em;
+    background: rgba(10, 0, 20, 0.55);
+    border: 1px solid rgba(0, 240, 255, 0.35);
+    box-shadow: 0 0 18px rgba(0, 240, 255, 0.18);
+    padding: 10px 14px; border-radius: 6px;
+    text-shadow: 0 0 8px #00f0ff;
+    line-height: 1.6;
+  }
+  #hud .key { color: #ff6ec4; text-shadow: 0 0 8px #ff2a8a; font-weight: bold; }
+  #hud .title-h { color: #fff; letter-spacing: 0.25em; margin-bottom: 4px; font-weight: bold;
+    text-shadow: 0 0 10px #ff2a8a; }
+
+  /* ---------- LEVEL SELECT MENU ---------- */
+  #menu {
+    position: fixed; inset: 0; z-index: 50;
+    background: radial-gradient(ellipse at center, #1a0030 0%, #07000f 70%, #02000a 100%);
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    transition: opacity 0.45s ease;
+    padding: 30px 20px;
+  }
+  #menu.hidden { opacity: 0; pointer-events: none; }
+  #menu h1 {
+    font-size: clamp(2em, 5vw, 3.6em);
+    font-weight: 900; letter-spacing: 0.18em;
+    background: linear-gradient(180deg, #fff 0%, #ff6ec4 50%, #6a00ff 100%);
+    -webkit-background-clip: text; background-clip: text;
+    -webkit-text-fill-color: transparent;
+    filter: drop-shadow(0 0 18px rgba(255, 42, 138, 0.7));
+    margin-bottom: 0.05em;
+  }
+  #menu .menu-sub {
+    color: #00f0ff; letter-spacing: 0.4em; font-size: 0.85em;
+    text-shadow: 0 0 12px #00f0ff;
+    margin-bottom: 2.2em;
+  }
+  .level-cards {
+    display: flex; gap: 24px; flex-wrap: wrap; justify-content: center;
+    max-width: 920px; width: 100%;
+  }
+  .level-card {
+    flex: 1 1 360px; max-width: 420px;
+    border: 2px solid; border-radius: 12px;
+    padding: 22px 22px 18px;
+    cursor: pointer; position: relative; overflow: hidden;
+    transition: transform 0.18s ease, box-shadow 0.18s ease;
+    backdrop-filter: blur(2px);
+  }
+  .level-card:hover { transform: translateY(-4px) scale(1.02); }
+  .level-card .lc-num {
+    font-size: 0.8em; letter-spacing: 0.4em; opacity: 0.7;
+  }
+  .level-card .lc-title {
+    font-size: 1.6em; font-weight: bold; letter-spacing: 0.12em;
+    margin: 4px 0 10px; line-height: 1.1;
+  }
+  .level-card .lc-desc {
+    font-size: 0.85em; opacity: 0.85; line-height: 1.5;
+    letter-spacing: 0.04em;
+  }
+  .level-card .lc-art {
+    height: 110px; margin: 14px 0; border-radius: 8px;
+    position: relative; overflow: hidden;
+  }
+  /* Synthwave card */
+  .level-card.synth {
+    border-color: #00f0ff;
+    box-shadow: 0 0 30px rgba(0, 240, 255, 0.25), inset 0 0 30px rgba(255, 42, 138, 0.08);
+    background: linear-gradient(160deg, rgba(20, 0, 50, 0.85), rgba(60, 0, 80, 0.7));
+    color: #fff;
+  }
+  .level-card.synth:hover { box-shadow: 0 0 50px rgba(0, 240, 255, 0.55); }
+  .level-card.synth .lc-title { color: #ff6ec4; text-shadow: 0 0 12px #ff2a8a; }
+  .level-card.synth .lc-art {
+    background:
+      linear-gradient(180deg, #1a0033 0%, #5c0a52 60%, #ff7a55 100%);
+  }
+  .level-card.synth .lc-art::before {
+    content: ""; position: absolute; left: 50%; top: 35%;
+    width: 70px; height: 70px; transform: translate(-50%, -50%);
+    border-radius: 50%;
+    background: radial-gradient(circle at 50% 35%, #ffd1e8, #ff2a8a 70%);
+    box-shadow: 0 0 30px #ff2a8a;
+  }
+  .level-card.synth .lc-art::after {
+    content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 50%;
+    background-image:
+      linear-gradient(rgba(255, 42, 138, 0.55) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0, 240, 255, 0.6) 1px, transparent 1px);
+    background-size: 20px 20px;
+    transform: perspective(120px) rotateX(55deg);
+    transform-origin: top;
+  }
+  /* Petscop card */
+  .level-card.pet {
+    border-color: #ffafd0;
+    box-shadow: 0 0 30px rgba(255, 175, 208, 0.18), inset 0 0 30px rgba(255, 175, 208, 0.05);
+    background: linear-gradient(160deg, rgba(20, 14, 28, 0.92), rgba(40, 20, 50, 0.85));
+    color: #f3e0ee;
+  }
+  .level-card.pet:hover { box-shadow: 0 0 50px rgba(255, 175, 208, 0.4); }
+  .level-card.pet .lc-title { color: #ffafd0; text-shadow: 0 0 12px rgba(255, 175, 208, 0.7); }
+  .level-card.pet .lc-art {
+    background: #15101e;
+    background-image:
+      repeating-conic-gradient(#2a1638 0% 25%, #15101e 0% 50%);
+    background-size: 28px 28px;
+    background-position: 0 0;
+  }
+  .level-card.pet .lc-art::before {
+    content: "AYY"; position: absolute; left: 50%; top: 50%;
+    transform: translate(-50%, -50%);
+    color: #ffafd0; font-size: 1.6em; font-weight: bold;
+    letter-spacing: 0.3em;
+    text-shadow: 0 0 12px rgba(255, 175, 208, 0.7), 0 0 2px #fff;
+  }
+  .level-card.pet .lc-art::after {
+    content: ""; position: absolute; right: 14px; top: 14px;
+    width: 22px; height: 22px; border-radius: 50%;
+    background: #ffafd0; box-shadow: 0 0 12px #ffafd0;
+  }
+  /* Guardian (dark Petscop) card */
+  .level-card.dark {
+    border-color: #ff2a3a;
+    box-shadow: 0 0 30px rgba(255, 42, 58, 0.22), inset 0 0 30px rgba(255, 42, 58, 0.05);
+    background: linear-gradient(160deg, rgba(20, 4, 8, 0.95), rgba(40, 6, 12, 0.9));
+    color: #f3d9d9;
+  }
+  .level-card.dark:hover { box-shadow: 0 0 50px rgba(255, 42, 58, 0.55); }
+  .level-card.dark .lc-title { color: #ff5a6a; text-shadow: 0 0 12px rgba(255, 42, 58, 0.7); }
+  .level-card.dark .lc-art {
+    background: #08020a;
+    background-image:
+      repeating-linear-gradient(transparent 0 4px, rgba(255, 42, 58, 0.10) 4px 5px),
+      radial-gradient(ellipse at center bottom, rgba(255, 42, 58, 0.18) 0%, transparent 65%);
+    animation: scanShimmer 2s steps(20) infinite;
+  }
+  @keyframes scanShimmer {
+    0%, 100% { background-position: 0 0, 0 0; }
+    50%      { background-position: 0 3px, 0 0; }
+  }
+  .level-card.dark .lc-art::before {
+    content: "GUARDIAN";
+    position: absolute; left: 50%; top: 62%;
+    transform: translate(-50%, -50%);
+    color: #ff5a6a; font-size: 1.5em; font-weight: bold;
+    letter-spacing: 0.35em;
+    text-shadow: 0 0 14px rgba(255, 42, 58, 0.9);
+  }
+  .level-card.dark .lc-art::after {
+    /* two glowing red eyes peering out of the static */
+    content: ""; position: absolute;
+    left: 50%; top: 30%; transform: translate(-50%, -50%);
+    width: 80px; height: 16px;
+    background:
+      radial-gradient(circle at 22% 50%, #ff3a3a 0 6px, transparent 7px),
+      radial-gradient(circle at 78% 50%, #ff3a3a 0 6px, transparent 7px);
+    filter: drop-shadow(0 0 8px #ff3a3a);
+  }
+  .menu-hint {
+    margin-top: 2em; font-size: 0.75em; letter-spacing: 0.3em;
+    color: rgba(255, 255, 255, 0.5);
+  }
+  /* in-game back-to-menu pill */
+  #backBtn {
+    position: fixed; top: 18px; right: 18px; z-index: 12;
+    background: rgba(10, 0, 20, 0.65);
+    border: 1px solid rgba(255, 110, 196, 0.5);
+    color: #ff6ec4;
+    font-family: inherit; font-size: 12px;
+    letter-spacing: 0.18em; font-weight: bold;
+    padding: 8px 14px; border-radius: 18px;
+    cursor: pointer;
+    text-shadow: 0 0 8px rgba(255, 110, 196, 0.7);
+    box-shadow: 0 0 14px rgba(255, 110, 196, 0.18);
+    display: none;
+  }
+  #backBtn:hover { background: rgba(255, 110, 196, 0.15); }
+  #levelTag {
+    position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%);
+    z-index: 11; font-size: 11px; letter-spacing: 0.4em;
+    color: rgba(255, 255, 255, 0.55);
+    text-shadow: 0 0 8px rgba(255, 255, 255, 0.4);
+    display: none;
+  }
+</style>
+</head>
+<body>
+
+<!-- ============== LOADING SCREEN ============== -->
+<div id="loader">
+  <div class="grid-floor"></div>
+  <div class="sun"></div>
+  <div class="stage">
+    <div class="title">JELLYCAR</div>
+    <div class="subtitle">// NEON DRIVE //</div>
+    <div class="jelly-stage" style="position: relative;">
+      <div class="jelly"></div>
+      <div class="shadow"></div>
+    </div>
+    <div class="progress-wrap"><div class="progress" id="prog"></div></div>
+    <div class="status" id="status">BOOTING PHYSICS CORE...</div>
+  </div>
+</div>
+
+<!-- ============== GAME CANVAS ============== -->
+<canvas id="game"></canvas>
+
+<div id="hud" style="display:none;">
+  <div class="title-h">CONTROLS</div>
+  <div><span class="key">W / &uarr;</span> &nbsp;Accelerate</div>
+  <div><span class="key">S / &darr;</span> &nbsp;Reverse</div>
+  <div><span class="key">A D / &larr; &rarr;</span> &nbsp;Tilt (hold)</div>
+  <div><span class="key">SPACE</span> &nbsp;Toggle GROW</div>
+  <div><span class="key">R</span> &nbsp;Reset car &nbsp; <span class="key">M</span> &nbsp;Menu</div>
+</div>
+
+<button id="backBtn">&larr; MENU</button>
+<div id="levelTag"></div>
+
+<div id="menu" class="hidden">
+  <h1>JELLYCAR</h1>
+  <div class="menu-sub">// SELECT  ROUTINE //</div>
+  <div class="level-cards">
+    <div class="level-card synth" data-level="0">
+      <div class="lc-num">ROUTINE  01</div>
+      <div class="lc-title">NEON DRIVE</div>
+      <div class="lc-art"></div>
+      <div class="lc-desc">A sunset cruise through a neon city skyline. Crash crates, jump the gap, blast the finish line.</div>
+    </div>
+    <div class="level-card pet" data-level="1">
+      <div class="lc-num">ROUTINE  02</div>
+      <div class="lc-title">THE NEWMAKER PLANE</div>
+      <div class="lc-art"></div>
+      <div class="lc-desc">do you remember being born? why does my father keep watching me sleep?</div>
+    </div>
+    <div class="level-card dark" data-level="2">
+      <div class="lc-num">ROUTINE  03</div>
+      <div class="lc-title">GUARDIAN</div>
+      <div class="lc-art"></div>
+      <div class="lc-desc">something is watching from the static. a windmill, a moving floor, the wrong child. you should not be here.</div>
+    </div>
+  </div>
+  <div class="menu-hint">CLICK A ROUTINE &nbsp; &middot; &nbsp; PRESS  M  IN-GAME TO RETURN</div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.19.0/matter.min.js"></script>
+<script>
+/* ============================================================
+   LOADING SEQUENCE
+   We fake a short load so the jelly mascot gets to bounce a bit.
+   ============================================================ */
+const loaderEl = document.getElementById("loader");
+const progEl   = document.getElementById("prog");
+const statusEl = document.getElementById("status");
+const hudEl    = document.getElementById("hud");
+const menuEl   = document.getElementById("menu");
+const backBtn  = document.getElementById("backBtn");
+const levelTag = document.getElementById("levelTag");
+
+const messages = [
+  "BOOTING PHYSICS CORE...",
+  "CALIBRATING JELLY...",
+  "POURING NEON INTO TUBES...",
+  "TUNING ANALOG SYNTHS...",
+  "WARMING UP TIRES...",
+  "SYNCING TO 1985...",
+  "ENGAGE!"
+];
+
+let lp = 0;
+const tick = setInterval(() => {
+  lp = Math.min(100, lp + 6 + Math.random() * 9);
+  progEl.style.width = lp + "%";
+  const idx = Math.min(messages.length - 1, Math.floor((lp / 100) * messages.length));
+  statusEl.textContent = messages[idx];
+  if (lp >= 100) {
+    clearInterval(tick);
+    setTimeout(() => {
+      loaderEl.classList.add("hidden");
+      // boot the engine, but drop into the level-select menu first;
+      // startGame exposes window.loadLevel(idx) which the cards call.
+      menuEl.classList.remove("hidden");
+      startGame();
+    }, 650);
+  }
+}, 220);
+
+
+/* ============================================================
+   GAME
+   ============================================================ */
+function startGame() {
+  const { Engine, World, Bodies, Body, Composite, Constraint, Events, Vector } = Matter;
+
+  const canvas = document.getElementById("game");
+  const ctx = canvas.getContext("2d");
+  function resize() {
+    canvas.width  = window.innerWidth;
+    canvas.height = window.innerHeight;
+  }
+  resize();
+  window.addEventListener("resize", resize);
+
+  // ---------- physics engine ----------
+  const engine = Engine.create();
+  engine.gravity.y = 1.25;
+  engine.positionIterations = 8;
+  engine.constraintIterations = 6;
+  const world = engine.world;
+
+
+  /* ============================================================
+     SOFT-BODY CAR
+     ------------------------------------------------------------
+     The chassis is a grid of small circular "particles" (cols x rows).
+     Every particle within a short distance of every other is linked
+     by a springy Constraint (stiffness ~0.35), so the body squishes
+     and wobbles when it lands or hits something - that's the jelly
+     feel. A negative collision group prevents the particles from
+     colliding with each other.
+     Two larger wheels are attached to the nearest body particles
+     with stiffer springs - they act as flexible axles, transferring
+     drive torque to the chassis while still allowing some give.
+     ============================================================ */
+  const CAR_START = { x: 350, y: 380 };
+
+  function createCar(x, y) {
+    const group = Body.nextGroup(true);
+    const cols = 5, rows = 3;
+    const W = 110, H = 38;
+    const partR = 7;
+    const wheelR = 22;
+
+    // 1) build particle grid
+    const particles = [];
+    for (let i = 0; i < cols; i++) {
+      for (let j = 0; j < rows; j++) {
+        const px = x - W/2 + (i / (cols - 1)) * W;
+        const py = y - H/2 + (j / (rows - 1)) * H;
+        const p = Bodies.circle(px, py, partR, {
+          collisionFilter: { group },
+          density: 0.0028,
+          friction: 0.05,
+          frictionAir: 0.012,
+          restitution: 0.04, // was 0.18 - chassis particles barely bounce now
+        });
+        p.isCarPart = true;
+        particles.push(p);
+      }
+    }
+
+    // 2) link nearby particles with springy constraints.
+    //    Stiffness is high enough that the chassis can't be pulled
+    //    into a shapeless blob, but low enough to still squish on impact.
+    const bodyConstraints = [];
+    const cellW = W / (cols - 1);
+    const cellH = H / (rows - 1);
+    const linkMax = Math.hypot(cellW, cellH) * 1.5; // includes diagonals
+    for (let a = 0; a < particles.length; a++) {
+      for (let b = a + 1; b < particles.length; b++) {
+        const d = Vector.magnitude(Vector.sub(particles[a].position, particles[b].position));
+        if (d <= linkMax + 1) {
+          bodyConstraints.push(Constraint.create({
+            bodyA: particles[a], bodyB: particles[b],
+            length: d,
+            stiffness: 0.62,
+            damping: 0.42,   // bumped from 0.28: kills idle chassis oscillation
+                             // that was making the car bounce on flat ground.
+          }));
+        }
+      }
+    }
+
+    // 3) wheels
+    // Wheels are heavier than the chassis (density 0.009 vs 0.0028) so the
+    // car has a low center of mass and resists flipping during bouncy landings.
+    // Restitution kept very low so basic driving doesn't trampoline the car.
+    const leftWheel = Bodies.circle(x - W * 0.32, y + H/2 + wheelR * 0.4, wheelR, {
+      collisionFilter: { group },
+      density: 0.009, friction: 0.75, frictionStatic: 1.2, restitution: 0.02,
+    });
+    const rightWheel = Bodies.circle(x + W * 0.32, y + H/2 + wheelR * 0.4, wheelR, {
+      collisionFilter: { group },
+      density: 0.009, friction: 0.75, frictionStatic: 1.2, restitution: 0.02,
+    });
+    leftWheel.isWheel = true;
+    rightWheel.isWheel = true;
+
+    // 4) connect each wheel to its 3 nearest body particles (flexible axle)
+    function attachWheel(wheel) {
+      const sorted = [...particles].sort((a, b) =>
+        Vector.magnitudeSquared(Vector.sub(a.position, wheel.position)) -
+        Vector.magnitudeSquared(Vector.sub(b.position, wheel.position))
+      ).slice(0, 3);
+      const cs = [];
+      for (const p of sorted) {
+        const d = Vector.magnitude(Vector.sub(p.position, wheel.position));
+        cs.push(Constraint.create({
+          bodyA: wheel, bodyB: p,
+          length: d, stiffness: 0.88, damping: 0.65,
+        }));
+      }
+      return cs;
+    }
+    const wheelConstraints = [...attachWheel(leftWheel), ...attachWheel(rightWheel)];
+
+    // 5) precompute outline indices (clockwise perimeter walk of the grid)
+    //    used to render the jelly chassis as a smooth blob.
+    const outline = [];
+    for (let i = 0; i < cols; i++)              outline.push(i * rows + 0);              // top L->R
+    for (let j = 1; j < rows; j++)              outline.push((cols - 1) * rows + j);     // right T->B
+    for (let i = cols - 2; i >= 0; i--)         outline.push(i * rows + (rows - 1));     // bottom R->L
+    for (let j = rows - 2; j >= 1; j--)         outline.push(0 * rows + j);              // left B->T
+
+    Composite.add(world, [
+      ...particles, leftWheel, rightWheel,
+      ...bodyConstraints, ...wheelConstraints,
+    ]);
+
+    return {
+      particles,
+      wheels: [leftWheel, rightWheel],
+      bodyConstraints, wheelConstraints,
+      allConstraints: [...bodyConstraints, ...wheelConstraints],
+      outline,
+      scale: 1,
+      startX: x, startY: y,
+    };
+  }
+
+
+  /* ============================================================
+     GROW MECHANIC
+     ------------------------------------------------------------
+     `car.scale` is the current size multiplier. Each frame we
+     lerp it toward `targetScale` (1.0 normal, ~1.85 grown). We
+     compute the per-frame factor (newScale / oldScale) and apply
+     it to every body via Body.scale (which automatically updates
+     mass and inertia from density), and to every constraint's
+     rest length so the chassis structurally inflates rather than
+     just being drawn larger. This is what lets a grown car bridge
+     gaps and roll over obstacles.
+     ============================================================ */
+  function applyScale(car, factor) {
+    if (Math.abs(factor - 1) < 0.0002) return;
+    for (const p of car.particles) Body.scale(p, factor, factor);
+    for (const w of car.wheels)    Body.scale(w, factor, factor);
+    for (const c of car.allConstraints) c.length *= factor;
+    car.scale *= factor;
+  }
+
+
+  /* ============================================================
+     LEVEL / THEME SYSTEM
+     ------------------------------------------------------------
+     Each LEVEL has a build() that returns a level object
+     (ground, crates, finish, gears, decorations, startX/Y, name).
+     A THEME defines the rendering palette used by drawWorld and
+     selects which background painter drawBackground delegates to.
+     loadLevel(idx) tears down whatever's currently in the world
+     and builds the new level + respawns the car.
+     ============================================================ */
+
+  const THEMES = {
+    synthwave: {
+      groundFill:   "rgba(0, 30, 60, 0.85)",
+      groundEdge:   "#00f0ff",
+      groundGlow:   "#00f0ff",
+      crateFill:    "rgba(80, 0, 110, 0.78)",
+      crateEdge:    "#ff6ec4",
+      finishColor:  "#00ff9d",
+      carColor:     "#ff2a8a",
+      carColorGrown:"#c14eff",
+      bgPainter:    () => drawSynthwaveBackground(),
+      winTitle:     "#ff2a8a",
+      winSub:       "#00f0ff",
+    },
+    petscop: {
+      groundFill:   "rgba(34, 24, 44, 0.94)",
+      groundEdge:   "#ffafd0",
+      groundGlow:   "rgba(255, 175, 208, 0.7)",
+      crateFill:    "rgba(64, 40, 88, 0.92)",
+      crateEdge:    "#ffd166",
+      finishColor:  "#ffd166",
+      carColor:     "#ff7ac4",
+      carColorGrown:"#a8e0a0",
+      bgPainter:    () => drawPetscopBackground(),
+      winTitle:     "#ffafd0",
+      winSub:       "#ffd166",
+    },
+    guardian: {
+      groundFill:   "rgba(18, 6, 10, 0.96)",
+      groundEdge:   "#ff3a4a",
+      groundGlow:   "rgba(255, 50, 70, 0.65)",
+      crateFill:    "rgba(36, 8, 14, 0.94)",
+      crateEdge:    "#ff5566",
+      finishColor:  "#fff5cc",
+      carColor:     "#ff2a3a",
+      carColorGrown:"#ffd166",
+      bgPainter:    () => drawGuardianBackground(),
+      winTitle:     "#ff3a4a",
+      winSub:       "#ffd166",
+    },
+  };
+
+  // ---------- LEVEL 1: NEON DRIVE (synthwave) ----------
+  function buildSynthwaveLevel() {
+    const segs = [
+      { x: 600,  y: 600, w: 1200, h: 80 },
+      { x: 1450, y: 555, w: 360,  h: 80, angle: -0.36 },      // jump ramp
+      { x: 1880, y: 540, w: 260,  h: 80 },                    // launch pad
+      { x: 2620, y: 600, w: 600,  h: 80 },                    // landing platform
+      { x: 3070, y: 555, w: 220,  h: 80, angle: 0.22 },       // small bump
+      { x: 3700, y: 600, w: 1100, h: 80 },                    // finish straight
+      { x: 4300, y: 460, w: 60,   h: 320 },                   // end wall
+      { x: -40,  y: 0,   w: 80,   h: 2400 },                  // left wall
+    ];
+    const ground = segs.map(s => {
+      const b = Bodies.rectangle(s.x, s.y, s.w, s.h, {
+        isStatic: true, friction: 1.0, angle: s.angle || 0,
+      });
+      b.isGround = true;
+      return b;
+    });
+
+    const crateSpots = [
+      [1000, 540], [1050, 540], [1025, 490],
+      [3260, 540], [3320, 540], [3290, 490], [3290, 440],
+    ];
+    const crates = crateSpots.map(([x, y]) => {
+      const c = Bodies.rectangle(x, y, 42, 42, {
+        density: 0.0014, friction: 0.5, restitution: 0.28,
+      });
+      c.isCrate = true;
+      return c;
+    });
+
+    const finish = Bodies.rectangle(4220, 500, 8, 200, {
+      isStatic: true, isSensor: true,
+    });
+    finish.isFinish = true;
+
+    Composite.add(world, [...ground, ...crates, finish]);
+    return {
+      ground, crates, finish,
+      gears: [], decorations: [], movers: [],
+      startX: 350, startY: 380,
+      name: "ROUTINE 01 // NEON DRIVE",
+      themeKey: "synthwave",
+    };
+  }
+
+  // ---------- LEVEL 2: THE NEWMAKER PLANE (petscop) ----------
+  function buildPetscopLevel() {
+    const segs = [
+      { x: 550,  y: 620, w: 1100, h: 80 },                    // start
+      { x: 1300, y: 580, w: 280,  h: 60, angle: -0.20 },      // ramp
+      // gap (jumpable)
+      { x: 2100, y: 620, w: 500,  h: 80 },                    // platform under gear
+      // gap
+      { x: 2950, y: 620, w: 380,  h: 80 },                    // small island after big gap
+      // big gap (need GROW or float)
+      { x: 2700, y: 470, w: 220,  h: 26 },                    // floating step (alt route)
+      { x: 3700, y: 620, w: 800,  h: 80 },                    // finish straight
+      { x: 4450, y: 510, w: 220,  h: 30, angle: -0.10 },      // little tilted slab
+      { x: 4750, y: 460, w: 60,   h: 320 },                   // end wall
+      { x: -40,  y: 0,   w: 80,   h: 2400 },                  // left wall
+    ];
+    const ground = segs.map(s => {
+      const b = Bodies.rectangle(s.x, s.y, s.w, s.h, {
+        isStatic: true, friction: 1.0, angle: s.angle || 0,
+      });
+      b.isGround = true;
+      return b;
+    });
+
+    // pet-faced crates (still physical, just rendered with eyes)
+    const crateSpots = [
+      [800,  560], [860, 560], [830, 510],
+      [3850, 560], [3910, 560], [3880, 510],
+    ];
+    const crates = crateSpots.map(([x, y]) => {
+      const c = Bodies.rectangle(x, y, 44, 44, {
+        density: 0.0014, friction: 0.55, restitution: 0.22,
+      });
+      c.isCrate = true;
+      c.isPetCrate = true;
+      return c;
+    });
+
+    // a slow spinning bar over the middle platform - obstacle to time.
+    // We use a STATIC body and rotate it manually each frame; the physics
+    // engine still uses its current vertex positions for collision.
+    const gear = Bodies.rectangle(2300, 540, 240, 16, {
+      isStatic: true, friction: 0.6, restitution: 0.1,
+    });
+    gear.isGear = true;
+    gear.spin   = 0.012;            // rad/frame
+    gear.gearW  = 240; gear.gearH = 16;
+    const gears = [gear];
+
+    // decorative "AYY" / "PETSCOP" / "99" / pet-face stickers.
+    // These are pure render-only; no physics.
+    const decorations = [
+      { type: "ayy",     x: 1050, y: 380, scale: 1.0, drift: 0.4 },
+      { type: "ayy",     x: 3400, y: 360, scale: 0.8, drift: 0.6 },
+      { type: "petscop", x: 2300, y: 230, scale: 1.0, drift: 0.2 },
+      { type: "num",     x: 600,  y: 320, label: "99", scale: 1.0, drift: 0.35 },
+      { type: "num",     x: 4050, y: 300, label: "99", scale: 0.9, drift: 0.5 },
+      { type: "petface", x: 350,  y: 540, color: "#ffafd0", name: "TONETH" },
+      { type: "petface", x: 4200, y: 540, color: "#a8e0a0", name: "PEN"    },
+      { type: "heart",   x: 2950, y: 380, scale: 1.0, drift: 0.3 },
+    ];
+
+    const finish = Bodies.rectangle(4680, 500, 8, 200, {
+      isStatic: true, isSensor: true,
+    });
+    finish.isFinish = true;
+
+    Composite.add(world, [...ground, ...crates, ...gears, finish]);
+    return {
+      ground, crates, finish, gears, decorations,
+      movers: [],
+      startX: 280, startY: 400,
+      name: "ROUTINE 02 // THE NEWMAKER PLANE",
+      themeKey: "petscop",
+    };
+  }
+
+  // ---------- LEVEL 3: GUARDIAN (dark petscop) ----------
+  // The "what petscop turns into" level. Tighter, claustrophobic, with
+  // multiple obstacles you have to time: a spinning bar, a four-arm
+  // windmill, a sliding kinematic platform spanning a void, and a low
+  // ceiling section that punishes growing in the wrong place.
+  function buildGuardianLevel() {
+    const segs = [
+      { x: 600,  y: 620, w: 1000, h: 80 },                    // start floor
+      { x: 600,  y: 380, w: 1000, h: 30 },                    // low ceiling above start
+      { x: 1240, y: 580, w: 240,  h: 60, angle: -0.24 },      // ramp up
+      { x: 1700, y: 580, w: 320,  h: 60 },                    // platform A (spinning bar above)
+      // gap A
+      { x: 2300, y: 580, w: 380,  h: 60 },                    // platform B (windmill above)
+      // big gap (moving platform spans this)
+      { x: 3400, y: 580, w: 320,  h: 60 },                    // platform C (low ceiling)
+      { x: 3400, y: 380, w: 320,  h: 30 },                    // platform C ceiling
+      // gap C
+      { x: 4000, y: 580, w: 540,  h: 60 },                    // final stretch
+      { x: 4300, y: 380, w: 60,   h: 320 },                   // end wall
+      { x: -40,  y: 0,   w: 80,   h: 2400 },                  // left wall
+    ];
+    const ground = segs.map(s => {
+      const b = Bodies.rectangle(s.x, s.y, s.w, s.h, {
+        isStatic: true, friction: 0.9, angle: s.angle || 0,
+      });
+      b.isGround = true;
+      return b;
+    });
+
+    // pet-faced crates with red glowing eyes
+    const crateSpots = [
+      [800, 560], [858, 560], [829, 510],
+      [4080, 540], [4140, 540],
+    ];
+    const crates = crateSpots.map(([x, y]) => {
+      const c = Bodies.rectangle(x, y, 44, 44, {
+        density: 0.0014, friction: 0.55, restitution: 0.18,
+      });
+      c.isCrate = true;
+      c.isDarkPetCrate = true;
+      return c;
+    });
+
+    // helper for spinning bar bodies
+    const mkGear = (x, y, w, h, spin) => {
+      const b = Bodies.rectangle(x, y, w, h, {
+        isStatic: true, friction: 0.7, restitution: 0.05,
+      });
+      b.isGear = true;
+      b.spin   = spin;
+      b.gearW  = w; b.gearH = h;
+      return b;
+    };
+
+    // Two-bar windmill: same center, perpendicular natural orientations.
+    // Both rotate at the same rate so the cross shape is preserved.
+    const windmillCx = 2490, windmillCy = 410;
+    const wmA = mkGear(windmillCx, windmillCy, 280, 14, -0.022);
+    const wmB = mkGear(windmillCx, windmillCy, 14, 280, -0.022);
+    wmA.isWindmillArm = true; wmB.isWindmillArm = true;
+    wmA.windmillHub = true; // we'll draw a hub once over wmA only
+
+    const gears = [
+      mkGear(1700, 470, 240, 14, 0.018),    // spinning bar over A
+      wmA, wmB,                              // 4-arm windmill over B
+      mkGear(4140, 470, 220, 14, 0.020),    // spinning bar over final
+    ];
+
+    // Sliding kinematic platform that bridges the big gap.
+    // Static body with manually-driven position. Moves slowly enough
+    // that the car doesn't tunnel and lands cleanly on it.
+    const mover = Bodies.rectangle(3000, 540, 180, 28, {
+      isStatic: true, friction: 0.95, restitution: 0.04,
+    });
+    mover.isMover  = true;
+    mover.moverFn  = (t) => {
+      // travels between x=2820 (just past plat B) and x=3260 (just before plat C)
+      const cx = 3040 + Math.sin(t * 0.55) * 220;
+      Body.setPosition(mover, { x: cx, y: 540 });
+    };
+    const movers = [mover];
+
+    const decorations = [
+      { type: "darktext", x: 950,  y: 470, label: "WRONG",     scale: 1.0, drift: 0.5 },
+      { type: "darktext", x: 1900, y: 280, label: "TIRED",     scale: 0.9, drift: 0.4 },
+      { type: "darktext", x: 2900, y: 240, label: "GUARDIAN",  scale: 1.1, drift: 0.25 },
+      { type: "darktext", x: 3650, y: 470, label: "REMEMBER",  scale: 0.85, drift: 0.4 },
+      { type: "darktext", x: 4100, y: 250, label: "X X X",     scale: 1.0, drift: 0.7 },
+      { type: "darkface", x: 350,  y: 540, color: "#c41e3a", name: "TOOL"  },
+      { type: "darkface", x: 4220, y: 540, color: "#8b1a2a", name: "QUITTER" },
+      { type: "darkheart",x: 2900, y: 380, scale: 1.0, drift: 0.3 },
+    ];
+
+    const finish = Bodies.rectangle(4250, 470, 8, 220, {
+      isStatic: true, isSensor: true,
+    });
+    finish.isFinish = true;
+
+    Composite.add(world, [...ground, ...crates, ...gears, ...movers, finish]);
+    return {
+      ground, crates, finish, gears, decorations, movers,
+      startX: 280, startY: 460,                   // spawn under the low ceiling
+      name: "ROUTINE 03 // GUARDIAN",
+      themeKey: "guardian",
+    };
+  }
+
+  const LEVELS = [
+    { idx: 0, build: buildSynthwaveLevel },
+    { idx: 1, build: buildPetscopLevel  },
+    { idx: 2, build: buildGuardianLevel },
+  ];
+
+  let level = null;
+  let currentTheme = THEMES.synthwave;
+  let currentLevelIdx = 0;
+  let car = null;          // built per-level via loadLevel
+
+  function tearDownLevel() {
+    if (!level) return;
+    const all = [
+      ...level.ground, ...level.crates,
+      ...(level.gears  || []),
+      ...(level.movers || []),
+      level.finish,
+    ];
+    for (const b of all) Composite.remove(world, b);
+    if (car) {
+      for (const p of car.particles)      Composite.remove(world, p);
+      for (const w of car.wheels)         Composite.remove(world, w);
+      for (const c of car.allConstraints) Composite.remove(world, c);
+    }
+    level = null;
+    car = null;
+  }
+
+  function loadLevel(idx) {
+    tearDownLevel();
+    currentLevelIdx = idx;
+    level = LEVELS[idx].build();
+    currentTheme = THEMES[level.themeKey];
+    car = createCar(level.startX, level.startY);
+    growActive = false;
+    won = false;
+    // snap camera near spawn so we don't see a wild pan-in
+    camera.x = level.startX - canvas.width / 2;
+    camera.y = level.startY - canvas.height * 0.55;
+    levelTag.textContent = level.name;
+  }
+
+  function showMenu() {
+    menuEl.classList.remove("hidden");
+    hudEl.style.display = "none";
+    backBtn.style.display = "none";
+    levelTag.style.display = "none";
+  }
+  function hideMenu() {
+    menuEl.classList.add("hidden");
+    hudEl.style.display = "block";
+    backBtn.style.display = "block";
+    levelTag.style.display = "block";
+  }
+
+  // Wire up the menu cards + back button. Exposed on window so the
+  // load-screen handoff and any external callers can use them.
+  document.querySelectorAll(".level-card").forEach(card => {
+    card.addEventListener("click", () => {
+      const idx = parseInt(card.dataset.level, 10);
+      loadLevel(idx);
+      hideMenu();
+    });
+  });
+  backBtn.addEventListener("click", () => {
+    showMenu();
+  });
+  window.loadLevel = loadLevel;
+  window.showMenu  = showMenu;
+
+
+  /* ============================================================
+     INPUT
+     ============================================================ */
+  const keys = {};
+  let growActive = false;
+
+  window.addEventListener("keydown", (e) => {
+    const k = e.key.toLowerCase();
+    keys[k] = true;
+    // ignore game keys while the menu is up so the player doesn't
+    // accidentally toggle grow / reset before picking a level.
+    if (!menuEl.classList.contains("hidden")) {
+      if (k === "escape") { /* menu already open */ }
+      return;
+    }
+    if (k === " ") { growActive = !growActive; e.preventDefault(); }
+    if (k === "r") resetCar();
+    if (k === "m" || k === "escape") showMenu();
+    if (k === "n" && won && currentLevelIdx + 1 < LEVELS.length) {
+      loadLevel(currentLevelIdx + 1);
+    }
+    if (["arrowup","arrowdown","arrowleft","arrowright"," "].includes(k)) e.preventDefault();
+  });
+  window.addEventListener("keyup", (e) => { keys[e.key.toLowerCase()] = false; });
+
+  function resetCar() {
+    if (!level) return;
+    for (const p of car.particles)      Composite.remove(world, p);
+    for (const w of car.wheels)         Composite.remove(world, w);
+    for (const c of car.allConstraints) Composite.remove(world, c);
+    car = createCar(level.startX, level.startY);
+    growActive = false;
+    won = false;
+  }
+
+
+  /* ============================================================
+     PARTICLE TRAIL
+     ============================================================ */
+  const trail = [];
+  function emitTrail() {
+    const w = car.wheels[Math.random() < 0.5 ? 0 : 1];
+    trail.push({
+      x: w.position.x + (Math.random() - 0.5) * 8,
+      y: w.position.y + (Math.random() * 0.8) * w.circleRadius,
+      vx: -w.velocity.x * 0.25 + (Math.random() - 0.5) * 1.4,
+      vy: -1 - Math.random() * 1.4,
+      life: 1,
+      size: 4 + Math.random() * 4,
+      color: Math.random() < 0.5 ? "#ff2a8a" : "#00f0ff",
+    });
+    if (trail.length > 180) trail.splice(0, trail.length - 180);
+  }
+  function updateTrail() {
+    for (let i = trail.length - 1; i >= 0; i--) {
+      const p = trail[i];
+      p.x += p.vx; p.y += p.vy;
+      p.vy += 0.04;
+      p.life -= 0.028;
+      if (p.life <= 0) trail.splice(i, 1);
+    }
+  }
+
+
+  /* ============================================================
+     CAR UPDATE: grow lerp, drive, air-tilt
+     ============================================================ */
+  function updateCar() {
+    // grow lerp
+    const target = growActive ? 1.85 : 1.0;
+    const newScale = car.scale + (target - car.scale) * 0.08;
+    applyScale(car, newScale / car.scale);
+
+    // drive
+    const drive = (keys.arrowup   || keys.w) ? 1
+                : (keys.arrowdown || keys.s) ? -1 : 0;
+    if (drive !== 0) {
+      // Tuned for controllable cruising. maxAv was 28 originally; this is
+      // ~40% slower top speed with gentler accel so wheelspin can't whip
+      // the chassis into a flip on a clean ground contact.
+      const maxAv = 16.5;
+      const step  = 0.028 * drive * (1 + 0.3 * (car.scale - 1));
+      for (const w of car.wheels) {
+        const next = w.angularVelocity + step * 6;
+        if (Math.abs(next) < maxAv || Math.sign(next) !== drive) {
+          Body.setAngularVelocity(w, next);
+        }
+      }
+      if (drive > 0 && Math.random() < 0.55) emitTrail();
+    }
+
+    // ----------------------------------------------------------
+    // AIR-TILT (angular velocity injection)
+    // The previous implementation applied per-particle tangential
+    // FORCES, which scaled with distance from the center and ripped
+    // the soft body into a shapeless blob at any meaningful input.
+    //
+    // Instead we now compute the assembly's current angular velocity
+    // around its center of mass (omega = L / I), then add a small,
+    // capped delta-omega by setting each particle's velocity to the
+    // corresponding rigid-rotation velocity. Because every particle
+    // gets a velocity that's CONSISTENT with rigid rotation, the
+    // internal springs aren't stretched - the car spins as one piece.
+    // ----------------------------------------------------------
+    const tilt = (keys.arrowright || keys.d) ?  1
+              :  (keys.arrowleft  || keys.a) ? -1 : 0;
+    if (tilt !== 0) {
+      const all = [...car.particles, ...car.wheels];
+      let cx = 0, cy = 0, M = 0;
+      for (const b of all) { cx += b.position.x * b.mass; cy += b.position.y * b.mass; M += b.mass; }
+      cx /= M; cy /= M;
+
+      // current angular momentum L and moment of inertia I about COM
+      let L = 0, I = 0;
+      for (const b of all) {
+        const dx = b.position.x - cx;
+        const dy = b.position.y - cy;
+        L += b.mass * (dx * b.velocity.y - dy * b.velocity.x);
+        I += b.mass * (dx*dx + dy*dy);
+      }
+      const omega = I > 0 ? L / I : 0;
+
+      // Tuned for hold-to-tilt feel: holding either arrow ramps to
+      // saturated spin in ~0.25s (~16 frames). Saturated spin is
+      // ~9 rad/s (~1.5 rotations/sec) - plenty of mid-air authority
+      // for flips while still smooth. The chassis can't tear because
+      // we add a uniform RIGID-rotation velocity field, not forces.
+      const MAX_OMEGA = 0.16;       // hard cap (rad/frame)
+      const dOmega    = 0.011 * tilt;
+
+      // only add input if we're not already saturated in that direction
+      if (!(Math.sign(omega) === tilt && Math.abs(omega) >= MAX_OMEGA)) {
+        for (const b of all) {
+          const dx = b.position.x - cx;
+          const dy = b.position.y - cy;
+          Body.setVelocity(b, {
+            x: b.velocity.x - dy * dOmega,
+            y: b.velocity.y + dx * dOmega,
+          });
+        }
+      }
+    }
+  }
+
+
+  /* ============================================================
+     CAMERA (smooth follow)
+     ============================================================ */
+  const camera = { x: 0, y: 0 };
+  function updateCamera() {
+    let cx = 0, cy = 0;
+    for (const p of car.particles) { cx += p.position.x; cy += p.position.y; }
+    cx /= car.particles.length; cy /= car.particles.length;
+    const tx = cx - canvas.width  / 2;
+    const ty = cy - canvas.height * 0.55;
+    camera.x += (tx - camera.x) * 0.085;
+    camera.y += (ty - camera.y) * 0.085;
+  }
+
+
+  /* ============================================================
+     RENDERING (synthwave neon)
+     ============================================================ */
+  // pre-generated decoration layers
+  const stars = [];
+  for (let i = 0; i < 140; i++) {
+    stars.push({
+      x: Math.random() * 4000,
+      y: Math.random() * 0.55,           // 0..1, fraction of canvas height
+      size: Math.random() < 0.85 ? 1 : 2,
+      brightness: 0.35 + Math.random() * 0.65,
+      phase: Math.random() * Math.PI * 2,
+      twinkle: 0.6 + Math.random() * 1.6,
+      hue: Math.random() < 0.7 ? "#ffffff"
+         : Math.random() < 0.5 ? "#ffc8e8" : "#a8e8ff",
+    });
+  }
+
+  // hashed pseudo-random city block heights (deterministic across frames)
+  function cityHash(i, seed) {
+    const v = Math.sin(i * 12.9898 + seed * 78.233) * 43758.5453;
+    return v - Math.floor(v);
+  }
+
+  function drawCityLayer(parallax, baseY, seed, opts) {
+    const { fill, edge, edgeGlow, blockW, maxH, minH, glow } = opts;
+    const W = canvas.width;
+    const offset = camera.x * parallax;
+    const startBlock = Math.floor((offset - blockW) / blockW);
+    const endBlock   = Math.ceil((offset + W + blockW) / blockW);
+
+    // silhouette path
+    ctx.beginPath();
+    ctx.moveTo(0, baseY + 4);
+    for (let i = startBlock; i <= endBlock; i++) {
+      const r = cityHash(i, seed);
+      const r2 = cityHash(i * 1.7 + 11, seed);
+      const h = minH + r * (maxH - minH);
+      const w = blockW * (0.85 + r2 * 0.4);
+      const x = i * blockW - offset;
+      ctx.lineTo(x,        baseY - h);
+      ctx.lineTo(x + w,    baseY - h);
+    }
+    ctx.lineTo(W + 10, baseY + 4);
+    ctx.closePath();
+    ctx.fillStyle = fill;
+    ctx.fill();
+
+    // top neon edge (sharp)
+    ctx.beginPath();
+    for (let i = startBlock; i <= endBlock; i++) {
+      const r = cityHash(i, seed);
+      const r2 = cityHash(i * 1.7 + 11, seed);
+      const h = minH + r * (maxH - minH);
+      const w = blockW * (0.85 + r2 * 0.4);
+      const x = i * blockW - offset;
+      if (i === startBlock) ctx.moveTo(x, baseY - h);
+      else                  ctx.lineTo(x, baseY - h);
+      ctx.lineTo(x + w,     baseY - h);
+    }
+    ctx.strokeStyle = edge;
+    ctx.lineWidth = 1.2;
+    ctx.shadowColor = edgeGlow;
+    ctx.shadowBlur = glow;
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+
+    // tiny windows on the nearest layer
+    if (parallax > 0.25) {
+      ctx.fillStyle = "rgba(255, 230, 180, 0.55)";
+      for (let i = startBlock; i <= endBlock; i++) {
+        const r  = cityHash(i, seed);
+        const r2 = cityHash(i * 1.7 + 11, seed);
+        const h  = minH + r * (maxH - minH);
+        const w  = blockW * (0.85 + r2 * 0.4);
+        const x  = i * blockW - offset;
+        // 2-3 columns of windows depending on width
+        const cols = 2 + (cityHash(i * 3.1, seed) > 0.5 ? 1 : 0);
+        const rows = Math.max(2, Math.floor(h / 14));
+        for (let c = 0; c < cols; c++) {
+          for (let row = 0; row < rows; row++) {
+            if (cityHash(i * 50 + c * 7 + row, seed) > 0.55) continue;
+            const wx = x + (c + 1) * (w / (cols + 1)) - 1;
+            const wy = baseY - h + 6 + row * (h / rows);
+            ctx.fillRect(wx, wy, 2, 2);
+          }
+        }
+      }
+    }
+  }
+
+  function drawBackground() {
+    // Dispatch to whichever painter the active theme uses. We keep the
+    // synthwave painter in drawSynthwaveBackground below; petscop has
+    // its own dark/checker treatment in drawPetscopBackground.
+    if (currentTheme && currentTheme.bgPainter) currentTheme.bgPainter();
+    else drawSynthwaveBackground();
+  }
+
+  function drawSynthwaveBackground() {
+    const W = canvas.width, H = canvas.height;
+    const horizonY = Math.floor(H * 0.58);
+
+    // 1) sky - cool deep teal->indigo->plum, much more restrained
+    //    than the previous "vaporwave hot pink" gradient.
+    const sky = ctx.createLinearGradient(0, 0, 0, horizonY);
+    sky.addColorStop(0.00, "#03060f");
+    sky.addColorStop(0.35, "#0a1428");
+    sky.addColorStop(0.65, "#1b1c47");
+    sky.addColorStop(0.88, "#3a2360");
+    sky.addColorStop(1.00, "#6a325f");
+    ctx.fillStyle = sky;
+    ctx.fillRect(0, 0, W, horizonY + 2);
+
+    // ground fill (below horizon, will be partly covered by grid)
+    const ground = ctx.createLinearGradient(0, horizonY, 0, H);
+    ground.addColorStop(0,   "#0d0420");
+    ground.addColorStop(0.5, "#06031a");
+    ground.addColorStop(1,   "#02010a");
+    ctx.fillStyle = ground;
+    ctx.fillRect(0, horizonY, W, H - horizonY);
+
+    // 2) stars (denser near top, fading near horizon)
+    const t = performance.now() * 0.001;
+    for (const s of stars) {
+      const sx = s.x - camera.x * 0.04;
+      const wrapped = ((sx % W) + W) % W;
+      const sy = s.y * horizonY * 0.92;
+      const tw = 0.55 + 0.45 * Math.sin(t * s.twinkle + s.phase);
+      ctx.globalAlpha = s.brightness * tw * (1 - sy / horizonY * 0.55);
+      ctx.fillStyle = s.hue;
+      ctx.fillRect(wrapped, sy, s.size, s.size);
+    }
+    ctx.globalAlpha = 1;
+
+    // 3) MOON - clean glowing disc with soft halo (replaces striped sun)
+    const moonR = 78;
+    const moonX = W * 0.72 - camera.x * 0.025;
+    const moonY = horizonY - 175;
+    // outer halo
+    const halo = ctx.createRadialGradient(moonX, moonY, moonR * 0.6, moonX, moonY, moonR * 4);
+    halo.addColorStop(0,    "rgba(180, 200, 255, 0.28)");
+    halo.addColorStop(0.4,  "rgba(140, 120, 220, 0.12)");
+    halo.addColorStop(1,    "rgba(140, 120, 220, 0)");
+    ctx.fillStyle = halo;
+    ctx.fillRect(moonX - moonR * 4, moonY - moonR * 4, moonR * 8, moonR * 8);
+    // disc
+    const disc = ctx.createRadialGradient(moonX - 18, moonY - 22, 6, moonX, moonY, moonR);
+    disc.addColorStop(0,    "#fdf7ff");
+    disc.addColorStop(0.55, "#dcd0f4");
+    disc.addColorStop(1,    "#7c6aae");
+    ctx.beginPath();
+    ctx.arc(moonX, moonY, moonR, 0, Math.PI * 2);
+    ctx.fillStyle = disc;
+    ctx.fill();
+    // crescent shadow for subtle dimensionality
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(moonX, moonY, moonR, 0, Math.PI * 2);
+    ctx.clip();
+    const shadow = ctx.createRadialGradient(moonX + 36, moonY + 18, 4, moonX + 36, moonY + 18, moonR * 1.4);
+    shadow.addColorStop(0, "rgba(20, 10, 50, 0)");
+    shadow.addColorStop(1, "rgba(20, 10, 50, 0.55)");
+    ctx.fillStyle = shadow;
+    ctx.fillRect(moonX - moonR, moonY - moonR, moonR * 2, moonR * 2);
+    ctx.restore();
+
+    // 4) thin atmospheric cloud bands across the sky
+    ctx.save();
+    for (let i = 0; i < 5; i++) {
+      const cy = horizonY - 100 - i * 28 - Math.sin(t * 0.1 + i) * 4;
+      const ox = (camera.x * (0.05 + i * 0.02)) % W;
+      const cg = ctx.createLinearGradient(0, cy - 12, 0, cy + 12);
+      cg.addColorStop(0,   "rgba(120, 90, 180, 0)");
+      cg.addColorStop(0.5, "rgba(180, 130, 220, 0.18)");
+      cg.addColorStop(1,   "rgba(120, 90, 180, 0)");
+      ctx.fillStyle = cg;
+      ctx.fillRect(-ox,        cy - 12, W * 1.2, 24);
+      ctx.fillRect(-ox + W,    cy - 12, W * 1.2, 24);
+    }
+    ctx.restore();
+
+    // 5) horizon glow band (soft amber, like distant city light pollution)
+    const glow = ctx.createLinearGradient(0, horizonY - 50, 0, horizonY + 8);
+    glow.addColorStop(0,    "rgba(255, 150, 200, 0)");
+    glow.addColorStop(0.6,  "rgba(255, 130, 180, 0.18)");
+    glow.addColorStop(1,    "rgba(255, 200, 220, 0.32)");
+    ctx.fillStyle = glow;
+    ctx.fillRect(0, horizonY - 50, W, 58);
+
+    // 6) parallax CITY SKYLINE (3 layers, far -> near)
+    drawCityLayer(0.06, horizonY, 11.7, {
+      fill:     "#0a0a26",
+      edge:     "rgba(120, 100, 200, 0.55)",
+      edgeGlow: "rgba(120, 100, 200, 0.6)",
+      blockW:   34, maxH: 95,  minH: 25, glow: 6,
+    });
+    drawCityLayer(0.16, horizonY, 4.2, {
+      fill:     "#070718",
+      edge:     "rgba(180, 140, 230, 0.7)",
+      edgeGlow: "rgba(180, 140, 230, 0.7)",
+      blockW:   46, maxH: 130, minH: 40, glow: 8,
+    });
+    drawCityLayer(0.32, horizonY, 8.9, {
+      fill:     "#03030d",
+      edge:     "rgba(0, 220, 255, 0.85)",
+      edgeGlow: "rgba(0, 220, 255, 0.7)",
+      blockW:   62, maxH: 160, minH: 55, glow: 10,
+    });
+
+    // 7) thin horizon haze line on top of skyline
+    const haze = ctx.createLinearGradient(0, horizonY - 4, 0, horizonY + 14);
+    haze.addColorStop(0,   "rgba(255, 180, 220, 0)");
+    haze.addColorStop(0.5, "rgba(255, 180, 220, 0.22)");
+    haze.addColorStop(1,   "rgba(255, 180, 220, 0)");
+    ctx.fillStyle = haze;
+    ctx.fillRect(0, horizonY - 4, W, 18);
+
+    // 8) restrained perspective grid floor
+    //    fewer lines, lower contrast, so the foreground reads cleanly.
+    const vanish = W / 2;
+    // horizontal rows
+    for (let i = 1; i < 14; i++) {
+      const tt = i / 13;
+      const y = horizonY + Math.pow(tt, 1.8) * (H - horizonY);
+      ctx.globalAlpha = 0.32 * (1 - tt * 0.55);
+      ctx.strokeStyle = "#7df0ff";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.lineTo(W, y);
+      ctx.stroke();
+    }
+    // vertical lines fanning from horizon
+    const camOff = (camera.x * 0.45) % 110;
+    for (let i = -10; i <= 10; i++) {
+      const xBottom = vanish + i * 110 - camOff;
+      ctx.globalAlpha = 0.22;
+      ctx.strokeStyle = "#c878ff";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(vanish, horizonY);
+      ctx.lineTo(xBottom + (xBottom - vanish) * 1.7, H + 20);
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+
+    // 9) deeper cinematic vignette
+    const vg = ctx.createRadialGradient(W/2, H/2, Math.min(W,H) * 0.4, W/2, H/2, Math.max(W,H) * 0.78);
+    vg.addColorStop(0, "rgba(0,0,0,0)");
+    vg.addColorStop(1, "rgba(0,0,0,0.7)");
+    ctx.fillStyle = vg;
+    ctx.fillRect(0, 0, W, H);
+  }
+
+  // ---------- PETSCOP BACKGROUND ----------
+  // Dim grey-purple void, distant pink "school" silhouette, faint
+  // CRT scanlines, and slow drifting dust motes. Aimed for the
+  // unsettling-PS1-childrens-game vibe rather than glow-everything neon.
+  const petscopDust = [];
+  for (let i = 0; i < 60; i++) {
+    petscopDust.push({
+      x: Math.random() * 4000,
+      y: Math.random(),               // 0..1 of canvas height
+      size: Math.random() < 0.7 ? 1 : 2,
+      alpha: 0.25 + Math.random() * 0.5,
+      drift: 0.4 + Math.random() * 0.8,
+      phase: Math.random() * Math.PI * 2,
+      hue: Math.random() < 0.5 ? "#ffafd0" : "#ffd166",
+    });
+  }
+
+  function drawPetscopBackground() {
+    const W = canvas.width, H = canvas.height;
+    const horizonY = Math.floor(H * 0.6);
+    const t = performance.now() * 0.001;
+
+    // 1) deep desaturated grey/violet sky
+    const sky = ctx.createLinearGradient(0, 0, 0, H);
+    sky.addColorStop(0,    "#0a0810");
+    sky.addColorStop(0.5,  "#16121f");
+    sky.addColorStop(0.75, "#22182f");
+    sky.addColorStop(1,    "#0a0410");
+    ctx.fillStyle = sky;
+    ctx.fillRect(0, 0, W, H);
+
+    // 2) soft pink horizon glow ("the school is somewhere out there")
+    const glow = ctx.createRadialGradient(W * 0.5, horizonY, 30, W * 0.5, horizonY, W * 0.7);
+    glow.addColorStop(0, "rgba(255, 175, 208, 0.22)");
+    glow.addColorStop(1, "rgba(255, 175, 208, 0)");
+    ctx.fillStyle = glow;
+    ctx.fillRect(0, 0, W, H);
+
+    // 3) distant building silhouettes - the "school" massing
+    const buildings = [
+      { x: 0.18, w: 130, h: 110 },
+      { x: 0.30, w: 100, h: 80  },
+      { x: 0.46, w: 200, h: 160 },   // main building
+      { x: 0.64, w: 110, h: 70  },
+      { x: 0.78, w: 150, h: 95  },
+    ];
+    for (const b of buildings) {
+      const cx = W * b.x - camera.x * 0.06;
+      const wrapped = ((cx % W) + W) % W;
+      const top = horizonY - b.h;
+      ctx.fillStyle = "#1a1226";
+      ctx.shadowColor = "rgba(255, 175, 208, 0.35)";
+      ctx.shadowBlur = 12;
+      ctx.fillRect(wrapped, top, b.w, b.h);
+      ctx.shadowBlur = 0;
+      // a couple of lit windows per building
+      ctx.fillStyle = "rgba(255, 209, 102, 0.85)";
+      for (let wy = top + 16; wy < top + b.h - 12; wy += 22) {
+        for (let wx = wrapped + 12; wx < wrapped + b.w - 8; wx += 22) {
+          if ((wx + wy) % 7 < 3) ctx.fillRect(wx, wy, 6, 8);
+        }
+      }
+    }
+
+    // 4) horizon line (very thin neon underline)
+    ctx.strokeStyle = "rgba(255, 175, 208, 0.5)";
+    ctx.lineWidth = 1;
+    ctx.shadowColor = "#ffafd0";
+    ctx.shadowBlur = 6;
+    ctx.beginPath();
+    ctx.moveTo(0, horizonY);
+    ctx.lineTo(W, horizonY);
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+
+    // 5) checker plane stretching to horizon (the Newmaker Plane)
+    //    fake perspective: each row gets shorter as it approaches the horizon.
+    const tileBase = 90;
+    const camOff = camera.x * 0.5;
+    for (let i = 0; i < 14; i++) {
+      const tt = i / 13;
+      const y0 = horizonY + Math.pow(tt, 1.7) * (H - horizonY);
+      const y1 = horizonY + Math.pow((i + 1) / 13, 1.7) * (H - horizonY);
+      // checker columns
+      const tile = tileBase * (1 + tt * 6);
+      const offset = ((camOff % tile) + tile) % tile;
+      for (let x = -offset - tile; x < W + tile; x += tile) {
+        const checkerOn = ((Math.floor((x + offset) / tile) + i) & 1) === 0;
+        if (checkerOn) {
+          ctx.fillStyle = `rgba(255, 175, 208, ${0.04 + tt * 0.06})`;
+          ctx.fillRect(x, y0, tile, y1 - y0);
+        }
+      }
+    }
+
+    // 6) faint horizontal scan lines for CRT feel
+    ctx.globalAlpha = 0.06;
+    ctx.fillStyle = "#ffafd0";
+    for (let y = 0; y < H; y += 3) ctx.fillRect(0, y, W, 1);
+    ctx.globalAlpha = 1;
+
+    // 7) drifting dust motes
+    for (const d of petscopDust) {
+      const dx = d.x - camera.x * 0.08 + Math.sin(t * d.drift + d.phase) * 18;
+      const wrapped = ((dx % W) + W) % W;
+      const dy = d.y * H + Math.cos(t * d.drift * 0.6 + d.phase) * 8;
+      ctx.globalAlpha = d.alpha * (0.6 + 0.4 * Math.sin(t + d.phase));
+      ctx.fillStyle = d.hue;
+      ctx.fillRect(wrapped, dy, d.size, d.size);
+    }
+    ctx.globalAlpha = 1;
+
+    // 8) gentle vignette
+    const vg = ctx.createRadialGradient(W/2, H/2, Math.min(W,H) * 0.35, W/2, H/2, Math.max(W,H) * 0.85);
+    vg.addColorStop(0, "rgba(0,0,0,0)");
+    vg.addColorStop(1, "rgba(0,0,0,0.75)");
+    ctx.fillStyle = vg;
+    ctx.fillRect(0, 0, W, H);
+  }
+
+  // ---------- GUARDIAN BACKGROUND ----------
+  // Where Petscop "evolves": near-black void with a low blood-red glow,
+  // a pair of huge watching eyes far in the distance, CRT static, and
+  // occasional horizontal glitch bands. Aim is unsettling, not festive.
+  const guardianBlobs = [];
+  for (let i = 0; i < 90; i++) {
+    guardianBlobs.push({
+      x: Math.random() * 4500,
+      y: Math.random(),
+      size: Math.random() < 0.8 ? 1 : 2,
+      alpha: 0.2 + Math.random() * 0.5,
+      drift: 0.3 + Math.random() * 0.7,
+      phase: Math.random() * Math.PI * 2,
+    });
+  }
+
+  function drawGuardianBackground() {
+    const W = canvas.width, H = canvas.height;
+    const t = performance.now() * 0.001;
+    const horizonY = Math.floor(H * 0.62);
+
+    // 1) near-black sky with a blood-red wash
+    const sky = ctx.createLinearGradient(0, 0, 0, H);
+    sky.addColorStop(0,   "#05030a");
+    sky.addColorStop(0.5, "#100408");
+    sky.addColorStop(0.8, "#1a0410");
+    sky.addColorStop(1,   "#02000a");
+    ctx.fillStyle = sky;
+    ctx.fillRect(0, 0, W, H);
+
+    // 2) horizon glow - low and red
+    const glow = ctx.createRadialGradient(W * 0.5, horizonY, 30, W * 0.5, horizonY, W * 0.85);
+    glow.addColorStop(0, "rgba(255, 50, 70, 0.22)");
+    glow.addColorStop(1, "rgba(255, 50, 70, 0)");
+    ctx.fillStyle = glow;
+    ctx.fillRect(0, 0, W, H);
+
+    // 3) the watching eyes - parallax, slow flicker
+    const flicker = 0.65 + 0.35 * Math.sin(t * 2.4) + (Math.random() < 0.02 ? -0.4 : 0);
+    const eyeY = H * 0.32;
+    const eyeBaseX = W * 0.5 - camera.x * 0.04;
+    const eyeR = 26;
+    ctx.save();
+    ctx.shadowColor = "#ff2a3a";
+    ctx.shadowBlur = 28;
+    ctx.fillStyle = `rgba(255, 35, 55, ${0.48 * Math.max(0, flicker)})`;
+    ctx.beginPath(); ctx.arc(eyeBaseX - 90, eyeY, eyeR, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(eyeBaseX + 90, eyeY, eyeR, 0, Math.PI * 2); ctx.fill();
+    ctx.shadowBlur = 0;
+    // pupils, a touch off-center to feel like they track
+    const pupilOffset = Math.sin(t * 0.3) * 4;
+    ctx.fillStyle = "#020003";
+    ctx.beginPath(); ctx.arc(eyeBaseX - 90 + pupilOffset, eyeY, 9, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(eyeBaseX + 90 + pupilOffset, eyeY, 9, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+
+    // 4) drifting red dust / static motes
+    for (const b of guardianBlobs) {
+      const dx = b.x - camera.x * 0.09 + Math.sin(t * b.drift + b.phase) * 22;
+      const wrapped = ((dx % W) + W) % W;
+      const dy = b.y * H + Math.cos(t * b.drift * 0.5 + b.phase) * 10;
+      ctx.globalAlpha = b.alpha * (0.55 + 0.45 * Math.sin(t * 1.2 + b.phase));
+      ctx.fillStyle = "#ff3a3a";
+      ctx.fillRect(wrapped, dy, b.size, b.size);
+    }
+    ctx.globalAlpha = 1;
+
+    // 5) heavy scanlines
+    ctx.globalAlpha = 0.09;
+    ctx.fillStyle = "#ff5566";
+    for (let y = 0; y < H; y += 3) ctx.fillRect(0, y, W, 1);
+    ctx.globalAlpha = 1;
+
+    // 6) occasional horizontal glitch band
+    if (Math.random() < 0.08) {
+      const gy = Math.random() * H;
+      const gh = 4 + Math.random() * 10;
+      ctx.fillStyle = `rgba(255, 42, 58, ${0.25 + Math.random() * 0.4})`;
+      ctx.fillRect(0, gy, W, gh);
+      // chromatic split
+      ctx.fillStyle = `rgba(0, 240, 255, 0.18)`;
+      ctx.fillRect(0, gy + 2, W, 1);
+    }
+
+    // 7) horizon hair line (very thin, to anchor the world)
+    ctx.strokeStyle = "rgba(255, 60, 80, 0.55)";
+    ctx.lineWidth = 1;
+    ctx.shadowColor = "#ff3a4a";
+    ctx.shadowBlur = 6;
+    ctx.beginPath();
+    ctx.moveTo(0, horizonY); ctx.lineTo(W, horizonY);
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+
+    // 8) a few tall jagged silhouettes - bad antennae / dead trees
+    const towers = [
+      { x: 0.18, h: 90  }, { x: 0.32, h: 60 },
+      { x: 0.55, h: 110 }, { x: 0.74, h: 75 },
+      { x: 0.88, h: 95  },
+    ];
+    ctx.fillStyle = "#08020a";
+    ctx.strokeStyle = "rgba(255, 60, 80, 0.45)";
+    ctx.lineWidth = 1;
+    for (const tw of towers) {
+      const tx = (W * tw.x - camera.x * 0.07) % W;
+      const wrapped = ((tx % W) + W) % W;
+      ctx.beginPath();
+      ctx.moveTo(wrapped - 6, horizonY);
+      ctx.lineTo(wrapped,     horizonY - tw.h);
+      ctx.lineTo(wrapped + 6, horizonY);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+    }
+
+    // 9) heavy vignette
+    const vg = ctx.createRadialGradient(W/2, H/2, Math.min(W,H) * 0.28, W/2, H/2, Math.max(W,H) * 0.85);
+    vg.addColorStop(0, "rgba(0,0,0,0)");
+    vg.addColorStop(1, "rgba(0,0,0,0.88)");
+    ctx.fillStyle = vg;
+    ctx.fillRect(0, 0, W, H);
+  }
+
+  function drawPolyShape(body, fill, edge, glow, lineW) {
+    const v = body.vertices;
+    ctx.beginPath();
+    ctx.moveTo(v[0].x, v[0].y);
+    for (let i = 1; i < v.length; i++) ctx.lineTo(v[i].x, v[i].y);
+    ctx.closePath();
+    ctx.fillStyle = fill;
+    ctx.fill();
+    ctx.shadowColor = glow;
+    ctx.shadowBlur = 18;
+    ctx.strokeStyle = edge;
+    ctx.lineWidth = lineW;
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+  }
+
+  function drawPetCrate(body) {
+    // dark background plus simple "pet face" eyes - friendly (petscop)
+    // or red-eyed and serrated (guardian / dark variant).
+    drawPolyShape(body, currentTheme.crateFill, currentTheme.crateEdge,
+                  currentTheme.crateEdge, 2);
+    ctx.save();
+    ctx.translate(body.position.x, body.position.y);
+    ctx.rotate(body.angle);
+    if (body.isDarkPetCrate) {
+      // sclera
+      ctx.fillStyle = "#ffeebb";
+      ctx.beginPath(); ctx.arc(-7, -3, 3.5, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc( 7, -3, 3.5, 0, Math.PI * 2); ctx.fill();
+      // glowing red pupils
+      ctx.fillStyle = "#ff3a3a";
+      ctx.shadowColor = "#ff3a3a";
+      ctx.shadowBlur = 8;
+      ctx.beginPath(); ctx.arc(-7, -3, 1.9, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc( 7, -3, 1.9, 0, Math.PI * 2); ctx.fill();
+      ctx.shadowBlur = 0;
+      // serrated mouth
+      ctx.strokeStyle = "#ffeebb";
+      ctx.lineWidth = 1.4;
+      ctx.beginPath();
+      ctx.moveTo(-6, 5);
+      ctx.lineTo(-3, 9);
+      ctx.lineTo( 0, 5);
+      ctx.lineTo( 3, 9);
+      ctx.lineTo( 6, 5);
+      ctx.stroke();
+    } else {
+      ctx.fillStyle = "#fff8e8";
+      ctx.beginPath(); ctx.arc(-7, -3, 3.2, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc( 7, -3, 3.2, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = "#1a0814";
+      ctx.beginPath(); ctx.arc(-7, -3, 1.6, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc( 7, -3, 1.6, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = "#fff8e8"; ctx.lineWidth = 1.4;
+      ctx.beginPath(); ctx.arc(0, 6, 5, 0.1, Math.PI - 0.1); ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  function drawGear(body) {
+    // Slim spinning bar with a central hub and teeth-style notches.
+    // Theme-tinted: synthwave/petscop = pink edge, guardian = blood red.
+    ctx.save();
+    ctx.translate(body.position.x, body.position.y);
+    ctx.rotate(body.angle);
+    const W = body.gearW || 240;
+    const H = body.gearH || 16;
+    const isGuardian = level && level.themeKey === "guardian";
+    const edge = isGuardian ? "#ff3a4a"            : "#ffafd0";
+    const fill = isGuardian ? "rgba(28, 4, 8, 0.96)" : "rgba(60, 40, 80, 0.95)";
+    const hubFill = isGuardian ? "#0a0204" : "#15101e";
+    const hubEdge = isGuardian ? "#ffd166" : "#ffd166";
+    ctx.fillStyle = fill;
+    ctx.shadowColor = edge;
+    ctx.shadowBlur = 18;
+    ctx.fillRect(-W/2, -H/2, W, H);
+    ctx.strokeStyle = edge;
+    ctx.lineWidth = 2;
+    ctx.strokeRect(-W/2, -H/2, W, H);
+    // notches along whichever side is longer
+    ctx.fillStyle = edge;
+    if (W >= H) {
+      for (let i = -W/2 + 14; i < W/2 - 14; i += 28) {
+        ctx.fillRect(i, -H/2 - 4, 6, 4);
+        ctx.fillRect(i, H/2,      6, 4);
+      }
+    } else {
+      for (let i = -H/2 + 14; i < H/2 - 14; i += 28) {
+        ctx.fillRect(-W/2 - 4, i, 4, 6);
+        ctx.fillRect(W/2,      i, 4, 6);
+      }
+    }
+    // hub - drawn once per gear; for the windmill cross we mark only one
+    // arm with windmillHub so we don't double-draw it.
+    if (!body.isWindmillArm || body.windmillHub) {
+      ctx.save();
+      ctx.rotate(-body.angle);   // hub disc shouldn't appear to spin
+      ctx.beginPath();
+      ctx.arc(0, 0, 14, 0, Math.PI * 2);
+      ctx.fillStyle = hubFill;
+      ctx.fill();
+      ctx.strokeStyle = hubEdge;
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      // tiny inner dot for guardian
+      if (isGuardian) {
+        ctx.beginPath();
+        ctx.arc(0, 0, 4, 0, Math.PI * 2);
+        ctx.fillStyle = "#ff3a3a";
+        ctx.fill();
+      }
+      ctx.restore();
+    }
+    ctx.shadowBlur = 0;
+    ctx.restore();
+  }
+
+  function drawMover(body) {
+    // Sliding kinematic platform - distinct red/black look so it reads
+    // as "the floor that moves" against the static ground.
+    drawPolyShape(body, "rgba(40, 8, 14, 0.95)", "#ff5566", "#ff3a4a", 2.5);
+    // hazard stripes on top
+    ctx.save();
+    ctx.translate(body.position.x, body.position.y);
+    const W = 180, H = 28;
+    ctx.beginPath();
+    ctx.rect(-W/2 + 4, -H/2 + 2, W - 8, 5);
+    ctx.clip();
+    ctx.fillStyle = "#ffd166";
+    for (let i = -W/2; i < W/2; i += 14) {
+      ctx.fillRect(i, -H/2 + 2, 7, 5);
+    }
+    ctx.restore();
+  }
+
+  function drawDecoration(d) {
+    const t = performance.now() * 0.001;
+    const bob = Math.sin(t * (0.5 + d.drift) + d.x * 0.001) * 6 * (d.drift || 0.4);
+    ctx.save();
+    ctx.translate(d.x, d.y + bob);
+
+    if (d.type === "ayy") {
+      ctx.font = `bold ${52 * (d.scale || 1)}px Courier New`;
+      ctx.textAlign = "center";
+      ctx.fillStyle = "#ffafd0";
+      ctx.shadowColor = "#ffafd0";
+      ctx.shadowBlur = 22;
+      ctx.fillText("AYY", 0, 0);
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = "rgba(255, 255, 255, 0.9)";
+      ctx.font = `bold ${52 * (d.scale || 1)}px Courier New`;
+      ctx.fillText("AYY", -1, -1);
+    }
+    else if (d.type === "petscop") {
+      ctx.font = `bold ${44 * (d.scale || 1)}px Courier New`;
+      ctx.textAlign = "center";
+      ctx.fillStyle = "rgba(255, 175, 208, 0.9)";
+      ctx.shadowColor = "#ffafd0";
+      ctx.shadowBlur = 28;
+      ctx.fillText("P E T S C O P", 0, 0);
+      ctx.shadowBlur = 0;
+    }
+    else if (d.type === "num") {
+      ctx.font = `bold ${64 * (d.scale || 1)}px Courier New`;
+      ctx.textAlign = "center";
+      ctx.fillStyle = "rgba(255, 209, 102, 0.85)";
+      ctx.shadowColor = "#ffd166";
+      ctx.shadowBlur = 22;
+      ctx.fillText(d.label || "99", 0, 0);
+      ctx.shadowBlur = 0;
+    }
+    else if (d.type === "heart") {
+      const s = 26 * (d.scale || 1);
+      ctx.fillStyle = "#ff7ac4";
+      ctx.shadowColor = "#ff7ac4";
+      ctx.shadowBlur = 18;
+      ctx.beginPath();
+      // simple heart from two circles + triangle
+      ctx.arc(-s * 0.45, -s * 0.2, s * 0.55, 0, Math.PI * 2);
+      ctx.arc( s * 0.45, -s * 0.2, s * 0.55, 0, Math.PI * 2);
+      ctx.moveTo(-s,  s * 0.05);
+      ctx.lineTo(0,   s * 1.05);
+      ctx.lineTo( s,  s * 0.05);
+      ctx.closePath();
+      ctx.fill();
+      ctx.shadowBlur = 0;
+    }
+    else if (d.type === "darktext") {
+      // glitchy red text - occasional 1-frame horizontal shift to feel
+      // like a bad CRT signal.
+      const flick = (Math.random() < 0.06) ? (Math.random() < 0.5 ? -4 : 4) : 0;
+      ctx.font = `bold ${44 * (d.scale || 1)}px Courier New`;
+      ctx.textAlign = "center";
+      ctx.shadowColor = "#ff2a3a";
+      ctx.shadowBlur = 22;
+      ctx.fillStyle = "rgba(255, 80, 100, 0.92)";
+      ctx.fillText(d.label, flick, 0);
+      ctx.shadowBlur = 0;
+      // dark stamped echo behind it
+      ctx.fillStyle = "rgba(40, 6, 10, 0.55)";
+      ctx.fillText(d.label, -flick, 2);
+    }
+    else if (d.type === "darkheart") {
+      const s = 26 * (d.scale || 1);
+      ctx.fillStyle = "#ff3a4a";
+      ctx.shadowColor = "#ff3a4a";
+      ctx.shadowBlur = 18;
+      ctx.beginPath();
+      ctx.arc(-s * 0.45, -s * 0.2, s * 0.55, 0, Math.PI * 2);
+      ctx.arc( s * 0.45, -s * 0.2, s * 0.55, 0, Math.PI * 2);
+      ctx.moveTo(-s,  s * 0.05);
+      ctx.lineTo(0,   s * 1.05);
+      ctx.lineTo( s,  s * 0.05);
+      ctx.closePath();
+      ctx.fill();
+      // crack down the middle
+      ctx.shadowBlur = 0;
+      ctx.strokeStyle = "#1a0000";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(0, -s * 0.4);
+      ctx.lineTo(-s * 0.15, 0);
+      ctx.lineTo( s * 0.15, s * 0.3);
+      ctx.lineTo(0, s * 0.95);
+      ctx.stroke();
+    }
+    else if (d.type === "darkface") {
+      // demonic pet variant - red glowing eyes, sharp ears, jagged mouth
+      const r = 30;
+      ctx.fillStyle = d.color || "#c41e3a";
+      ctx.shadowColor = d.color || "#c41e3a";
+      ctx.shadowBlur = 22;
+      ctx.beginPath();
+      ctx.arc(0, 0, r, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.shadowBlur = 0;
+      // sharp ears
+      ctx.beginPath();
+      ctx.moveTo(-r * 0.7, -r * 0.55); ctx.lineTo(-r * 0.5, -r * 1.5); ctx.lineTo(-r * 0.05, -r * 0.6);
+      ctx.moveTo( r * 0.7, -r * 0.55); ctx.lineTo( r * 0.5, -r * 1.5); ctx.lineTo( r * 0.05, -r * 0.6);
+      ctx.closePath();
+      ctx.fillStyle = d.color || "#c41e3a";
+      ctx.fill();
+      // glowing red pupils on a sickly yellow sclera
+      ctx.fillStyle = "#ffeebb";
+      ctx.beginPath(); ctx.arc(-r * 0.32, -r * 0.05, r * 0.18, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc( r * 0.32, -r * 0.05, r * 0.18, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = "#ff2a3a";
+      ctx.shadowColor = "#ff2a3a";
+      ctx.shadowBlur = 14;
+      ctx.beginPath(); ctx.arc(-r * 0.32, -r * 0.05, r * 0.10, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc( r * 0.32, -r * 0.05, r * 0.10, 0, Math.PI * 2); ctx.fill();
+      ctx.shadowBlur = 0;
+      // jagged mouth
+      ctx.strokeStyle = "#1a0000";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(-r * 0.45, r * 0.22);
+      ctx.lineTo(-r * 0.22, r * 0.42);
+      ctx.lineTo( 0,        r * 0.22);
+      ctx.lineTo( r * 0.22, r * 0.42);
+      ctx.lineTo( r * 0.45, r * 0.22);
+      ctx.stroke();
+      // name tag
+      if (d.name) {
+        ctx.font = "bold 12px Courier New";
+        ctx.textAlign = "center";
+        ctx.fillStyle = "#ff5a6a";
+        ctx.shadowColor = "#ff5a6a";
+        ctx.shadowBlur = 8;
+        ctx.fillText(d.name, 0, r + 18);
+        ctx.shadowBlur = 0;
+      }
+    }
+    else if (d.type === "petface") {
+      // bigger, friendlier face perched on the ground
+      const r = 28;
+      ctx.fillStyle = d.color || "#ffafd0";
+      ctx.shadowColor = d.color || "#ffafd0";
+      ctx.shadowBlur = 22;
+      ctx.beginPath();
+      ctx.arc(0, 0, r, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.shadowBlur = 0;
+      // ears
+      ctx.beginPath();
+      ctx.moveTo(-r * 0.7, -r * 0.6); ctx.lineTo(-r * 0.3, -r * 1.2); ctx.lineTo(-r * 0.1, -r * 0.65);
+      ctx.moveTo( r * 0.7, -r * 0.6); ctx.lineTo( r * 0.3, -r * 1.2); ctx.lineTo( r * 0.1, -r * 0.65);
+      ctx.closePath();
+      ctx.fillStyle = d.color || "#ffafd0";
+      ctx.fill();
+      // eyes
+      ctx.fillStyle = "#1a0814";
+      ctx.beginPath(); ctx.arc(-r * 0.35, -r * 0.05, r * 0.13, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc( r * 0.35, -r * 0.05, r * 0.13, 0, Math.PI * 2); ctx.fill();
+      // smile
+      ctx.strokeStyle = "#1a0814";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(0, r * 0.2, r * 0.35, 0.1, Math.PI - 0.1);
+      ctx.stroke();
+      // name tag
+      if (d.name) {
+        ctx.font = "bold 12px Courier New";
+        ctx.textAlign = "center";
+        ctx.fillStyle = "#ffd166";
+        ctx.shadowColor = "#ffd166";
+        ctx.shadowBlur = 8;
+        ctx.fillText(d.name, 0, r + 18);
+        ctx.shadowBlur = 0;
+      }
+    }
+    ctx.restore();
+  }
+
+  function drawWorld() {
+    ctx.save();
+    ctx.translate(-camera.x, -camera.y);
+
+    // background-layer decorations (drawn behind ground so terrain
+    // visually overlaps. petscop specific.)
+    if (level.decorations) {
+      for (const d of level.decorations) drawDecoration(d);
+    }
+
+    // ground
+    for (const g of level.ground) {
+      drawPolyShape(g, currentTheme.groundFill, currentTheme.groundEdge,
+                    currentTheme.groundGlow, 2.5);
+    }
+
+    // checkered overlay on ground for petscop "newmaker plane" feel
+    if (level.themeKey === "petscop") {
+      ctx.save();
+      ctx.globalAlpha = 0.18;
+      for (const g of level.ground) {
+        const v = g.vertices;
+        ctx.beginPath();
+        ctx.moveTo(v[0].x, v[0].y);
+        for (let i = 1; i < v.length; i++) ctx.lineTo(v[i].x, v[i].y);
+        ctx.closePath();
+        ctx.clip();
+        // draw checker tiles in body's local-axis-aligned bounds
+        const minX = Math.min(...v.map(p => p.x));
+        const maxX = Math.max(...v.map(p => p.x));
+        const minY = Math.min(...v.map(p => p.y));
+        const maxY = Math.max(...v.map(p => p.y));
+        const cs = 22;
+        for (let yy = Math.floor(minY / cs) * cs; yy < maxY; yy += cs) {
+          for (let xx = Math.floor(minX / cs) * cs; xx < maxX; xx += cs) {
+            if (((xx / cs) + (yy / cs)) & 1) {
+              ctx.fillStyle = "#ffafd0";
+              ctx.fillRect(xx, yy, cs, cs);
+            }
+          }
+        }
+        // need a fresh clip per body - reset by re-saving.
+        ctx.restore();
+        ctx.save();
+        ctx.globalAlpha = 0.18;
+      }
+      ctx.restore();
+    }
+
+    // crates
+    for (const c of level.crates) {
+      if (c.isPetCrate) drawPetCrate(c);
+      else drawPolyShape(c, currentTheme.crateFill, currentTheme.crateEdge,
+                            currentTheme.crateEdge, 2);
+    }
+
+    // moving (kinematic) platforms - guardian
+    if (level.movers) {
+      for (const m of level.movers) drawMover(m);
+    }
+
+    // gears (petscop / guardian)
+    if (level.gears) {
+      for (const g of level.gears) drawGear(g);
+    }
+
+    // finish marker
+    const f = level.finish;
+    const fc = currentTheme.finishColor;
+    ctx.shadowColor = fc;
+    ctx.shadowBlur = 28;
+    ctx.fillStyle = fc;
+    ctx.fillRect(f.position.x - 4, f.position.y - 100, 8, 200);
+    ctx.font = "bold 22px Courier New";
+    ctx.textAlign = "center";
+    ctx.fillText("FINISH", f.position.x, f.position.y - 110);
+    ctx.shadowBlur = 0;
+
+    ctx.restore();
+  }
+
+  function drawTrail() {
+    ctx.save();
+    ctx.translate(-camera.x, -camera.y);
+    for (const p of trail) {
+      ctx.globalAlpha = p.life;
+      ctx.fillStyle = p.color;
+      ctx.shadowColor = p.color;
+      ctx.shadowBlur = 14;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.size * p.life, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.shadowBlur = 0;
+    ctx.globalAlpha = 1;
+    ctx.restore();
+  }
+
+  function drawCar() {
+    ctx.save();
+    ctx.translate(-camera.x, -camera.y);
+
+    const ps = car.particles;
+    const oi = car.outline;
+
+    // jelly chassis - smooth curve through outline particles (using midpoints
+    // as anchors and particle positions as control points)
+    ctx.beginPath();
+    const start = ps[oi[0]].position;
+    const startNext = ps[oi[1]].position;
+    const startMid = { x: (start.x + startNext.x) / 2, y: (start.y + startNext.y) / 2 };
+    ctx.moveTo(startMid.x, startMid.y);
+    for (let i = 1; i <= oi.length; i++) {
+      const cur  = ps[oi[i % oi.length]].position;
+      const next = ps[oi[(i + 1) % oi.length]].position;
+      const mx = (cur.x + next.x) / 2;
+      const my = (cur.y + next.y) / 2;
+      ctx.quadraticCurveTo(cur.x, cur.y, mx, my);
+    }
+    ctx.closePath();
+
+    const carColor = growActive ? currentTheme.carColorGrown : currentTheme.carColor;
+    ctx.fillStyle = carColor;
+    ctx.shadowColor = carColor;
+    ctx.shadowBlur = 28;
+    ctx.fill();
+    ctx.shadowBlur = 0;
+
+    // glossy top highlight clipped to chassis
+    ctx.save();
+    ctx.clip();
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+    for (const i of oi) {
+      const p = ps[i].position;
+      if (p.x < minX) minX = p.x; if (p.x > maxX) maxX = p.x;
+      if (p.y < minY) minY = p.y; if (p.y > maxY) maxY = p.y;
+    }
+    const hg = ctx.createLinearGradient(0, minY, 0, maxY);
+    hg.addColorStop(0,   "rgba(255, 255, 255, 0.55)");
+    hg.addColorStop(0.4, "rgba(255, 255, 255, 0.05)");
+    hg.addColorStop(1,   "rgba(0, 0, 0, 0.25)");
+    ctx.fillStyle = hg;
+    ctx.fillRect(minX - 20, minY - 5, maxX - minX + 40, maxY - minY + 10);
+    ctx.restore();
+
+    // crisp outline
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = "#ffffff";
+    ctx.shadowColor = carColor;
+    ctx.shadowBlur = 14;
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+
+    // wheels
+    for (const w of car.wheels) {
+      ctx.save();
+      ctx.translate(w.position.x, w.position.y);
+      ctx.rotate(w.angle);
+      const r = w.circleRadius;
+
+      ctx.shadowColor = "#00f0ff";
+      ctx.shadowBlur = 22;
+      ctx.fillStyle = "#0a0a30";
+      ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2); ctx.fill();
+      ctx.lineWidth = 3;
+      ctx.strokeStyle = "#00f0ff";
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+
+      // spokes
+      ctx.strokeStyle = "#ff6ec4";
+      ctx.lineWidth = 2;
+      for (let s = 0; s < 5; s++) {
+        const a = (s / 5) * Math.PI * 2;
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        ctx.lineTo(Math.cos(a) * r * 0.82, Math.sin(a) * r * 0.82);
+        ctx.stroke();
+      }
+      // hub
+      ctx.fillStyle = "#ff6ec4";
+      ctx.shadowColor = "#ff2a8a";
+      ctx.shadowBlur = 12;
+      ctx.beginPath(); ctx.arc(0, 0, r * 0.22, 0, Math.PI * 2); ctx.fill();
+      ctx.shadowBlur = 0;
+      ctx.restore();
+    }
+
+    ctx.restore();
+  }
+
+
+  /* ============================================================
+     WIN STATE
+     ============================================================ */
+  let won = false;
+  Events.on(engine, "collisionStart", (evt) => {
+    for (const pair of evt.pairs) {
+      const a = pair.bodyA, b = pair.bodyB;
+      const finishHit = a.isFinish || b.isFinish;
+      const carHit    = a.isWheel || b.isWheel || a.isCarPart || b.isCarPart;
+      if (finishHit && carHit) won = true;
+    }
+  });
+
+  function drawWin() {
+    if (!won) return;
+    ctx.save();
+    ctx.fillStyle = "rgba(10, 0, 20, 0.6)";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.textAlign = "center";
+
+    const cx = canvas.width / 2, cy = canvas.height / 2;
+    ctx.font = "bold 84px Courier New";
+    ctx.shadowColor = currentTheme.winTitle;
+    ctx.shadowBlur = 30;
+    ctx.fillStyle = currentTheme.winTitle;
+    ctx.fillText("FINISH!", cx, cy);
+
+    ctx.shadowColor = currentTheme.winSub;
+    ctx.shadowBlur = 18;
+    ctx.fillStyle = currentTheme.winSub;
+    ctx.font = "20px Courier New";
+    const hasNext = currentLevelIdx + 1 < LEVELS.length;
+    if (hasNext) {
+      ctx.fillText("PRESS  N  FOR  NEXT  ROUTINE", cx, cy + 50);
+    }
+    ctx.fillText("R  RESTART   ·   M  MENU", cx, cy + (hasNext ? 80 : 50));
+    ctx.restore();
+  }
+
+  function drawTopRightHUD() {
+    ctx.save();
+    ctx.textAlign = "right";
+    ctx.font = "bold 14px Courier New";
+    ctx.fillStyle = growActive ? "#c14eff" : "rgba(255, 255, 255, 0.45)";
+    ctx.shadowColor = "#c14eff";
+    ctx.shadowBlur = growActive ? 18 : 0;
+    ctx.fillText("GROW: " + (growActive ? "ON" : "OFF"), canvas.width - 18, 28);
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = "#00f0ff";
+    ctx.shadowColor = "#00f0ff";
+    ctx.shadowBlur = 8;
+    ctx.fillText("SCALE: " + car.scale.toFixed(2) + "x", canvas.width - 18, 48);
+    ctx.shadowBlur = 0;
+    ctx.restore();
+  }
+
+
+  /* ============================================================
+     MAIN LOOP
+     ============================================================ */
+  function loop() {
+    // While the menu is up there's no level loaded; skip game updates
+    // entirely. The menu has its own (CSS-driven) visuals so the canvas
+    // is just hidden behind it.
+    if (level && car) {
+      updateCar();
+      updateTrail();
+      // Drive the kinematic obstacles. Gears are static bodies whose
+      // angle we tick manually; movers are static bodies whose position
+      // we tick manually via a per-mover update fn (e.g. the guardian
+      // sliding platform). The engine still uses their current vertex
+      // positions for collision so they read as moving obstacles.
+      const tNow = performance.now() * 0.001;
+      if (level.gears) {
+        for (const g of level.gears) Body.setAngle(g, g.angle + g.spin);
+      }
+      if (level.movers) {
+        for (const m of level.movers) m.moverFn(tNow);
+      }
+      Engine.update(engine, 1000 / 60);
+      updateCamera();
+
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      drawBackground();
+      drawWorld();
+      drawTrail();
+      drawCar();
+      drawTopRightHUD();
+      drawWin();
+
+      // auto-respawn if the car falls into the void
+      const center = car.particles[Math.floor(car.particles.length / 2)].position;
+      if (center.y > 1600) resetCar();
+    } else {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+    }
+
+    requestAnimationFrame(loop);
+  }
+  loop();
+}
+</script>
+</body>
+</html>
